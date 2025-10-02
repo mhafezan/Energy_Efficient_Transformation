@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import transforms
 from tqdm import tqdm
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -23,75 +22,6 @@ class AdversarialDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx]
-
-# For each sample in test set, this computes the gradient of the loss w.r.t the input data (data_grad), creates a perturbed image with fgsm_attack (perturbed_data)
-# Then checks to see if the perturbed example is adversarial. To test the model accuracy, it saves and returns some successful adversarial examples to be visualized later
-def FGSM_Test(model, device, test_loader, epsilon):
-
-    correct = 0
-
-    for data, target in test_loader:
-
-        data, target = data.to(device), target.to(device)
-
-        # Set requires_grad attribute of tensor to True to compute gradients with respect to input data
-        data.requires_grad = True
-
-        output = model(data)
-        init_pred = output.max(1, keepdim=True)[1]
-        # If the initial prediction (before attack) is wrong, don't bother FGSM to turn it into adversarial
-        if init_pred.item() != target.item():
-            continue
-
-        # Calculate the loss as Negative Log Likelihood Loss (NLLLoss)
-        loss = F.nll_loss(output, target)
-
-        # Zero all existing gradients and Calculate gradients of model in backward
-        model.zero_grad()
-        loss.backward()
-
-        # Collect 'data gradients'. The data_grad is the gradient of the loss w.r.t the input image.
-        data_grad = data.grad.data
-
-        # FGSM attack function to create adversarial example (perturbed image)
-        sign_data_grad  = data_grad.sign() # Collect the element-wise sign of the data gradient
-        perturbed_data = data + epsilon * sign_data_grad # FGSM Definition
-        perturbed_data = torch.clamp(perturbed_data, 0, 1) # Clipping perturbed_data within [input_min, input_max]
-
-        # Re-classify the perturbed image
-        output = model(perturbed_data)
-
-        # Final prediction after applying attack
-        final_pred = output.max(1, keepdim=True)[1] # To get the index of the maximum log-probability
-
-        if final_pred.item() == target.item():
-            correct += 1
-
-    # Calculate final accuracy for the given epsilon after adversarial attack
-    final_acc = correct/float(len(test_loader))
-    print(f"Epsilon: {epsilon}\tTest Accuracy = {correct} / {len(test_loader)} = {final_acc}")
-
-    # Return the accuracy and an adversarial example
-    return final_acc
-
-# To calculate the sparsity range of each layer for each input image
-def calculate_range(current_sparsity_list, sparsity_range, class_index):
-    
-    for layer in range (len(current_sparsity_list)):
-
-        if current_sparsity_list[layer] < sparsity_range[class_index][layer][0]:
-            sparsity_range[class_index][layer][0] = current_sparsity_list[layer]
-
-        if current_sparsity_list[layer] > sparsity_range[class_index][layer][1]:
-            sparsity_range[class_index][layer][1] = current_sparsity_list[layer]
-
-    return sparsity_range
-
-# The output ranges from 0 to 1, where 0 means no similarity and 1 means identical tensors (all non-zero elements are the same)
-def jaccard_similarity(tensor1, tensor2):
-    intersection = torch.logical_and(tensor1, tensor2).sum().item()
-    union = torch.logical_or(tensor1, tensor2).sum().item()
-    return intersection / union
 
 # To clip the perturbed input (if needed) so as to ensure that added distortions are within the "L2 bound eps" and does not exceed the input range of [min, max]
 def clip_tensor(input_tensor, eps, batch_size, min_data, max_data):
@@ -241,153 +171,26 @@ def Sparsity_Attack_Generation(model, device, test_loader, num_classes, c_init, 
 
     return adversarial_dataset, first_acc, final_acc, l2_norms, (total_net_zeros_before/total_net_sizes_before), (total_net_zeros_after/total_net_sizes_after)
 
-def Sparsity_Attack_Profile (model, device, train_loader, num_classes, args):
-    
-    updated_maps  = [None] * num_classes
-    diff_num_ones = [0] * num_classes
-    prev_num_ones = [0] * num_classes
-    curr_num_ones = [0] * num_classes
-    num_layers = 5
-    
-    # To define sparsity-range for each class
-    range_for_each_class = [[[float('inf'), float('-inf')] for _ in range(num_layers)] for _ in range(num_classes)]
-
-    for index, (data, target) in enumerate(tqdm(train_loader, desc='Profiling Progress')):
-        
-        data, target = data.to(device), target.to(device)
-
-        output = model(data)
-        pred = output[0].max(1, keepdim=False)[1]
-        
-        if pred.item() == target.item():
-            if args.method == 'sparsity-range':
-                current_sparsity_rate = [0.0] * num_layers
-                for i in range(num_layers):
-                    current_sparsity_rate[i] = (output[1][i] / output[2][i]) if output[2][i] != 0 else 0
-                range_for_each_class = calculate_range(current_sparsity_rate, range_for_each_class, target.item())
-
-            elif args.method == 'sparsity-map':
-                if updated_maps[target.item()] == None:
-                    updated_maps[target.item()] = output[3]
-                    prev_num_ones[target.item()] = torch.sum(updated_maps[target.item()]).item()
-                    diff_num_ones[target.item()] = abs(curr_num_ones[target.item()] - prev_num_ones[target.item()])
-                else:
-                    updated_maps [target.item()] = torch.bitwise_or(updated_maps[target.item()], output[3])
-                    curr_num_ones[target.item()] = torch.sum(updated_maps[target.item()]).item()
-                    diff_num_ones[target.item()] = abs(curr_num_ones[target.item()] - prev_num_ones[target.item()])
-                    prev_num_ones[target.item()] = curr_num_ones[target.item()]
-
-                if all(num < 1 for num in diff_num_ones):
-                    print(f"\n{diff_num_ones}\n")
-                    break
-
-    return updated_maps, range_for_each_class, index
-
-def Sparsity_Attack_Detection(model, device, offline_sparsity_maps, offline_sparsity_ranges, test_loader, num_classes, args):
-    
-    generated_adversarial_for_class = [0] * num_classes 
-    num_of_items_in_class = [0] * num_classes
-
-    # Initialization for sparsity-maps
-    correctly_predicted_adversarial_for_class_map = [0] * num_classes
-    correctly_predicted_adversarial_ratio_map = []
-
-    # Initialization for sparsity-ranges
-    num_layers = 5
-    layer_inclusion_threshold = num_layers - 4
-    correctly_predicted_adversarial_for_class_range = [0] * num_classes
-    correctly_predicted_adversarial_ratio_range = []
-
-    for index, (data, target, adversarial) in enumerate(tqdm(test_loader, desc='Data Progress')): 
-
-        for i in range (args.batch_size):
-
-            single_image = data[i].unsqueeze(0).to(device)
-            single_target = target[i].unsqueeze(0).to(device)
-
-            output = model(single_image)
-            
-            pred = output[0].max(1, keepdim=False)[1]
-
-            ############################################## sparsity-range #####################################################################
-
-            current_sparsity_rate = [0.0] * num_layers
-
-            for L in range(num_layers):
-                current_sparsity_rate[L] = (output[1][L] / output[2][L]) if output[2][L] != 0 else 0
-            
-            in_range_status = [0] * num_layers
-            for M in range(num_layers):
-                if not offline_sparsity_ranges[pred.item()][M][0] <= current_sparsity_rate[M] <= offline_sparsity_ranges[pred.item()][M][1]:
-                    in_range_status[M] = 1
-            
-            if sum(in_range_status) >= layer_inclusion_threshold:
-                if adversarial[i].item() == 1:
-                    correctly_predicted_adversarial_for_class_range[single_target.item()] += 1
-
-            ############################################## sparsity-map #######################################################################
-            
-            sim_rate = jaccard_similarity(offline_sparsity_maps[pred.item()], output[3])
-
-            # if the following condition is True, we predict that the input is adversarial
-            if sim_rate <= args.sim_threshold:
-                if adversarial[i].item() == 1:
-                    correctly_predicted_adversarial_for_class_map[single_target.item()] += 1
-
-            # To check the real adversarial status for the same predicted class
-            if adversarial[i].item() == 1:
-                generated_adversarial_for_class[single_target.item()] += 1 
-
-            num_of_items_in_class[single_target.item()] += 1
-
-            ###################################################################################################################################
-        
-    for predicted, generated in zip(correctly_predicted_adversarial_for_class_map, generated_adversarial_for_class):
-        correctly_predicted_adversarial_ratio_map.append((predicted/generated)*100)
-    
-    for predicted, generated in zip(correctly_predicted_adversarial_for_class_range, generated_adversarial_for_class): # Range
-        correctly_predicted_adversarial_ratio_range.append((predicted/generated)*100)
-    
-    correctly_predicted_adversarial_ratio_map = ["{:.2f}".format(ratio) for ratio in correctly_predicted_adversarial_ratio_map]
-
-    correctly_predicted_adversarial_ratio_range = ["{:.2f}".format(ratio) for ratio in correctly_predicted_adversarial_ratio_range] # Range
-
-    overall_accuracy_map = sum(correctly_predicted_adversarial_for_class_map)/sum(generated_adversarial_for_class)
-    overall_accuracy_range = sum(correctly_predicted_adversarial_for_class_range)/sum(generated_adversarial_for_class)
-    
-    print(f"\nDistribution of data in each class: {num_of_items_in_class}\n")
-    print(f"Correctly predicted adversarials for each class (map): {correctly_predicted_adversarial_for_class_map}\n")
-    print(f"Correctly predicted adversarials for each class (rng): {correctly_predicted_adversarial_for_class_range}\n")
-    print(f"Number of generated adversarials for each class: {generated_adversarial_for_class}\n")
-    print(f"Percentage of correctly predicted adversarials for each class (map): {correctly_predicted_adversarial_ratio_map}\n")
-    print(f"Percentage of correctly predicted adversarials for each class (rng): {correctly_predicted_adversarial_ratio_range}\n")
-    print(f"Overall attack detection accuracy using sparsity-map method: {overall_accuracy_map*100:.2f}\n")
-    print(f"Overall attack detection accuracy using sparsity-range method: {overall_accuracy_range*100:.2f}\n")
-    
-    return 
-
 if __name__ == '__main__':
     
-    # Initialize parser and setting the hyper parameters
+    # Initialize parser and setting the hyper-parameters
     parser = argparse.ArgumentParser(description="LenNet5 Network with MNIST Dataset")
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=10, type=int)
     parser.add_argument('--lr', default=0.01, type=float, help="Initial learning rate")
-    parser.add_argument('--phase', default='train', help="train, FGSM, sparsity-attack, sparsity-profile, sparsity-detect, test")
-    parser.add_argument('--method', default='sparsity-map', help="profiling can be performed based on sparsity-map or sparsity-range")
-    parser.add_argument('--weights', default=None, help="The path to the pretrained weights. Should be specified when testing")
-    parser.add_argument('--dataset', default=None, help="The path to the train and test datasets")
-    parser.add_argument('--imax', default=100, type=int, help="Maximum iterations in the inner loop of Sparsity Attack function")
+    parser.add_argument('--phase', default='train', help="train, test, sparsity-transform")
+    parser.add_argument('--weights', default=None, help="Path to the pretrained weights")
+    parser.add_argument('--dataset', default=None, help="Path to the train and test datasets")
+    parser.add_argument('--imax', default=100, type=int, help="Optimization iterations of Sparsity-Transformer function")
     parser.add_argument('--beta', default=15, type=int, help="Beta parameter used in Tanh function")
     parser.add_argument('--eps', default=0.9, type=float, help="L2-norm bound of epsilon for clipping purturbed data")
-    parser.add_argument('--eps_iter', default=0.01, type=float, help="epsilon in each inner loop iteration")
-    parser.add_argument('--sim_threshold', default=0.5, type=float, help="similarity threshold")
+    parser.add_argument('--eps_iter', default=0.01, type=float, help="epsilon coefficient for optimization iterations")
     parser.add_argument('--img_start_index', default=0, type=int, help="The first index of the dataset")
     parser.add_argument('--img_end_index', default=10000, type=int, help="The last index of the dataset")
     parser.add_argument('--constrained', action='store_true', help="To active clipping the generated purturbed data")
     parser.add_argument('--store_attack', action='store_true', help="To store the generated adversarials")
     parser.add_argument('--power', action='store_true', help="To generate power results for CNVLUTIN architecture")
-    parser.add_argument('--adversarial', action='store_true', help="To test the adversarial rather than clean dataset in the test phase")
+    parser.add_argument('--adversarial', action='store_true', help="To test the adversarial rather than clean dataset during test phase")
     parser.add_argument('--arch', default='cnvlutin', help="To specify the architecture: cnvlutin or dadiannao")
     args = parser.parse_args()
     print(f"\n{args}\n")
@@ -402,19 +205,10 @@ if __name__ == '__main__':
         train_loader  = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
         test_dataset  = mnist.MNIST(root=args.dataset, train=False, download=True, transform=transforms.ToTensor())
         test_loader   = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
-    elif args.phase == 'FGSM':
-        test_dataset = mnist.MNIST(root=args.dataset, train=False, download=True, transform=transforms.ToTensor())
-        test_loader  = DataLoader(test_dataset, batch_size=1, shuffle=True)
-    elif args.phase == 'sparsity-attack':
+    elif args.phase == 'sparsity-transform':
         test_dataset = mnist.MNIST(root=args.dataset, train=False, download=True, transform=transforms.ToTensor())
         test_dataset_sub = torch.utils.data.Subset(test_dataset, list(range(args.img_start_index, args.img_end_index)))
         test_loader  = DataLoader(test_dataset_sub, batch_size=args.batch_size, shuffle=False)
-    elif args.phase == 'sparsity-profile':
-        train_dataset = mnist.MNIST(root=args.dataset, train=True, download=True, transform=transforms.ToTensor())
-        train_loader  = DataLoader(train_dataset, batch_size=1, shuffle=False)
-    elif args.phase == 'sparsity-detect':
-        test_dataset = torch.load(f"{args.dataset}/adversarial_dataset_constrained_False.pt", map_location=device)
-        test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     elif args.phase == 'test':
         if args.adversarial:
             test_dataset = torch.load('./adversarial_data/adversarial_dataset_constrained_False.pt', map_location=device)
@@ -424,15 +218,12 @@ if __name__ == '__main__':
             test_loader   = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Network Initialization
-    if args.phase == 'train' or args.phase == 'FGSM':
+    if args.phase == 'train':
         from models.model_train import LeNet5
         model = LeNet5().to(device)
-    elif args.phase == 'sparsity-attack':
+    elif args.phase == 'sparsity-transform':
         from models.model_attack import LeNet5
         model = LeNet5(args).to(device)
-    elif args.phase == 'sparsity-profile' or args.phase == 'sparsity-detect':
-        from models.model_profile_detect import LeNet5
-        model = LeNet5().to(device)
     elif args.phase == 'test':
         from models.model_test_power_delay import LeNet5
         model = LeNet5(args).to(device)
@@ -462,7 +253,7 @@ if __name__ == '__main__':
                 image = image.to(device)
                 label = label.to(device)
                 preds = model(image.float().detach())
-                preds =torch.argmax(preds, dim=-1)
+                preds = torch.argmax(preds, dim=-1)
                 current_correct_num = preds == label
                 correct_num += np.sum(current_correct_num.to('cpu').numpy(), axis=-1)
                 sample_num += current_correct_num.shape[0]
@@ -479,6 +270,7 @@ if __name__ == '__main__':
             prev_acc = acc
         
         print("Training finished!")
+        sys.exit(0)
 
     elif args.phase == 'test':
         if args.weights is not None:
@@ -645,7 +437,7 @@ if __name__ == '__main__':
         plt.show()
         sys.exit()
     
-    elif args.phase == 'sparsity-attack':
+    elif args.phase == 'sparsity-transform':
         if args.weights is not None:
             model.load_state_dict(torch.load(args.weights, map_location=device))
         else:
@@ -724,7 +516,7 @@ if __name__ == '__main__':
 
 # Train:             python3 main.py --phase train --dataset mnist_dataset
 # FGSM:              python3 main.py --phase FGSM --dataset mnist_dataset --weights weights/mnist_0.9882.pkl 
-# Attack Generation: python3 main.py --phase sparsity-attack --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
+# Attack Generation: python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Attack Profiling:  python3 main.py --phase sparsity-profile --method sparsity-map/range --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Attack Detection:  python3 main.py --phase sparsity-detect --sim_threshold 0.5 --dataset adversarial_data/mnist_dataset --weights weights/mnist_0.9882.pkl
 # Test Power Delay:  python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --adversarial --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
