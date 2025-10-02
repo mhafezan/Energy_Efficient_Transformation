@@ -235,6 +235,9 @@ if __name__ == '__main__':
         loss_fn = CrossEntropyLoss()
         EPOCHS = args.epochs
         prev_acc = 0
+        # Lists to store per-epoch accuracies for plotting
+        train_acc_list = []
+        val_acc_list = []
         for epoch in range(EPOCHS):
             model.train()
             for index, (inputs, labels) in enumerate(train_loader):
@@ -245,21 +248,38 @@ if __name__ == '__main__':
                 loss = loss_fn(preds, labels.long())
                 loss.backward()
                 optimizer.step()
-    
+            # Calculate training accuracy for this epoch
             model.eval()
+            train_correct = 0
+            train_samples = 0
+            with torch.no_grad():
+                for idx, (img, lbl) in enumerate(train_loader):
+                    img = img.to(device)
+                    lbl = lbl.to(device)
+                    out = model(img.float())
+                    pred = torch.argmax(out, dim=-1)
+                    eq = (pred == lbl)
+                    train_correct += int(torch.sum(eq).cpu().numpy())
+                    train_samples += eq.shape[0]
+            train_acc = train_correct / train_samples if train_samples > 0 else 0.0
+            train_acc_list.append(train_acc)
+    
+            # Validation accuracy (on test set)
             correct_num = 0
             sample_num = 0
-            for index, (image, label) in enumerate(test_loader):
-                image = image.to(device)
-                label = label.to(device)
-                preds = model(image.float().detach())
-                preds = torch.argmax(preds, dim=-1)
-                current_correct_num = preds == label
-                correct_num += np.sum(current_correct_num.to('cpu').numpy(), axis=-1)
-                sample_num += current_correct_num.shape[0]
-            
-            acc = correct_num / sample_num
-            print('Accuracy in Epoch %3d: %1.4f' % (epoch+1, acc*100), flush=True)
+            with torch.no_grad():
+                for index, (image, label) in enumerate(test_loader):
+                    image = image.to(device)
+                    label = label.to(device)
+                    preds = model(image.float())
+                    preds = torch.argmax(preds, dim=-1)
+                    current_correct_num = preds == label
+                    correct_num += int(torch.sum(current_correct_num.to('cpu')))
+                    sample_num += current_correct_num.shape[0]
+
+            acc = correct_num / sample_num if sample_num > 0 else 0.0
+            val_acc_list.append(acc)
+            print('Epoch %3d - Train Acc: %1.4f  Val Acc: %1.4f' % (epoch+1, train_acc*100, acc*100), flush=True)
             
             if not os.path.isdir("weights"):
                 os.mkdir("weights")
@@ -270,6 +290,24 @@ if __name__ == '__main__':
             prev_acc = acc
         
         print("Training finished!")
+        # Plot train and validation accuracy vs epochs
+        try:
+            epochs = list(range(1, len(train_acc_list) + 1))
+            plt.figure()
+            plt.plot(epochs, [a * 100 for a in train_acc_list], label='Train Accuracy')
+            plt.plot(epochs, [a * 100 for a in val_acc_list], label='Validation Accuracy')
+            plt.xlabel('Epoch')
+            plt.ylabel('Accuracy (%)')
+            plt.title('Train vs Validation Accuracy')
+            plt.legend()
+            plt.grid(True)
+            # Save figure
+            if not os.path.isdir('figures'):
+                os.mkdir('figures')
+            plt.savefig('figures/training_accuracy.png', bbox_inches='tight')
+            plt.show()
+        except Exception as e:
+            print(f"Could not plot accuracy curves: {e}")
         sys.exit(0)
 
     elif args.phase == 'test':
