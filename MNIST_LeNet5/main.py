@@ -514,11 +514,7 @@ if __name__ == '__main__':
         sys.exit(0)
         
 
-# Train:             python3 main.py --phase train --dataset mnist_dataset
-# FGSM:              python3 main.py --phase FGSM --dataset mnist_dataset --weights weights/mnist_0.9882.pkl 
-# Attack Generation: python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
-# Attack Profiling:  python3 main.py --phase sparsity-profile --method sparsity-map/range --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
-# Attack Detection:  python3 main.py --phase sparsity-detect --sim_threshold 0.5 --dataset adversarial_data/mnist_dataset --weights weights/mnist_0.9882.pkl
-# Test Power Delay:  python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --adversarial --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
-
+# Train:            python3 main.py --phase train --dataset mnist_dataset
+# Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
+# Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --adversarial --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Compile C++ file:  "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
