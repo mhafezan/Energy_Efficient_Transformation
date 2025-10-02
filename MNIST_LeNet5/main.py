@@ -222,7 +222,7 @@ if __name__ == '__main__':
         from models.model_train import LeNet5
         model = LeNet5().to(device)
     elif args.phase == 'sparsity-transform':
-        from models.model_attack import LeNet5
+        from models.model_transform import LeNet5
         model = LeNet5(args).to(device)
     elif args.phase == 'test':
         from models.model_test_power_delay import LeNet5
@@ -407,35 +407,6 @@ if __name__ == '__main__':
             print('Total      (J): %1.20f' % (total_eng),'\n')
     
         sys.exit(0)
-        
-    elif args.phase == 'FGSM':
-        if args.weights is not None:
-            model.load_state_dict(torch.load(args.weights, map_location=device))
-        else:
-            print('No weights are provided.')
-            sys.exit()
-
-        # Epsilon parameter Initialization
-        epsilons = [0, 0.007, 0.002, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35]
-        
-        # Set the model in evaluation mode
-        model.eval()
-        accuracies = []
-
-        # Run test for each epsilon
-        for eps in epsilons:
-            acc = FGSM_Test(model, device, test_loader, eps)
-            accuracies.append(acc)
-
-        plt.figure(figsize=(5,5))
-        plt.plot(epsilons, accuracies, "*-")
-        plt.yticks(np.arange(0, 1.1, step=0.1))
-        plt.xticks(np.arange(0, .35, step=0.05))
-        plt.title("Accuracy vs Epsilon")
-        plt.xlabel("Epsilon")
-        plt.ylabel("Accuracy")
-        plt.show()
-        sys.exit()
     
     elif args.phase == 'sparsity-transform':
         if args.weights is not None:
@@ -462,59 +433,8 @@ if __name__ == '__main__':
         print(f"Sparsity reduction applying energy attack: {sr_net_before_total/(sys.float_info.epsilon if sr_net_after_total == 0 else sr_net_after_total)}")
         print(f"Average difference of L2-Norms: {sum(l2_norms) / len(l2_norms)} \n")
 
-    elif args.phase == 'sparsity-profile':
-        if args.weights is not None:
-            model.load_state_dict(torch.load(args.weights, map_location=device))
-        else:
-            print('No weights are provided.')
-            sys.exit()
-        
-        # Set the model in evaluation mode
-        model.eval()
-        
-        num_classes  = len(train_dataset.classes)
-
-        """The Sparsity_Attack_Profile function returns an array with the size of num_classes
-           in which each element comprises a Sparsity-Map Tensor with values of 0 and 1"""
-        sparsity_maps, sparsity_range, index = Sparsity_Attack_Profile(model, device, train_loader, num_classes, args) 
-        
-        # Store the Sparsity_Maps in an offline file
-        print(f"We should stop profiling at data-point {index} when profiling is based on {args.method}.\n")
-        print(f"P1 = {((index+1)/len(train_loader)*100):.2f} % of trainset has been used for profiling.\n")
-
-        if args.method == 'sparsity-map':
-            # Save the Sparsity Maps to a compressed file using pickle protocol 4 (for Python 3.4+)
-            torch.save(sparsity_maps, "./profile_data/sparsity_maps.pth", pickle_protocol=4)
-        
-        if args.method == 'sparsity-range':
-            # Save the Sparsity Range to a compressed file using pickle protocol 4 (for Python 3.4+)
-            torch.save(sparsity_range, "./profile_data/sparsity_ranges.pth", pickle_protocol=4)
-            
-        sys.exit(0)
-
-    elif args.phase == 'sparsity-detect':
-        if args.weights is not None:
-            model.load_state_dict(torch.load(args.weights, map_location=device))
-        else:
-            print('No weights are provided.')
-            sys.exit()
-        
-        # Set the model in evaluation mode
-        model.eval()
-
-        # Load the sparsity-maps and sparsity-ranges from offline file (generated in profiling phase)
-        offline_sparsity_maps = torch.load("profile_data/sparsity_maps.pth")
-        offline_sparsity_ranges = torch.load("profile_data/sparsity_ranges.pth")
-        
-        num_classes  = len(offline_sparsity_maps)
-
-        # Prints the number of detected adversarials in each class
-        Sparsity_Attack_Detection(model, device, offline_sparsity_maps, offline_sparsity_ranges, test_loader, num_classes, args)
-        
-        sys.exit(0)
-        
-
 # Train:            python3 main.py --phase train --dataset mnist_dataset
 # Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --adversarial --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
+
 # Compile C++ file:  "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
