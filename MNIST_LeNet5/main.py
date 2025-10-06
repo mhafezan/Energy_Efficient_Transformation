@@ -35,7 +35,7 @@ def clip_tensor(input_tensor, eps, batch_size, min_data, max_data):
 
     return clipped_tensor
     
-# Increases sparsity rate for all images of original testset
+# Increases sparsity rate for all images of original test set
 def sparsity_rate_increment(model, device, test_loader, num_classes, c_init, args):
     
     num_processed_images = 0
@@ -475,5 +475,4 @@ if __name__ == '__main__':
 # Train:            python3 main.py --phase train --dataset mnist_dataset
 # Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_attack --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --adversarial --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
-
-# Compile C++ file:  "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
+# Compile C++ file: "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
