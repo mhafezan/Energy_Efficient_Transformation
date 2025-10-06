@@ -12,8 +12,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-# Custom Dataset to store the adversarial data
-class AdversarialDataset(Dataset):
+# Custom Dataset to store the transformed data
+class Transformed_Dataset(Dataset):
     def __init__(self, data):
         self.data = data
 
@@ -35,8 +35,8 @@ def clip_tensor(input_tensor, eps, batch_size, min_data, max_data):
 
     return clipped_tensor
     
-# Generates sparsity attack for all images of original testset
-def Sparsity_Attack_Generation(model, device, test_loader, num_classes, c_init, args):
+# Increases sparsity rate for all images of original testset
+def sparsity_rate_increment(model, device, test_loader, num_classes, c_init, args):
     
     num_processed_images = 0
     correct_before = 0
@@ -160,8 +160,8 @@ def Sparsity_Attack_Generation(model, device, test_loader, num_classes, c_init, 
 
         num_processed_images += args.batch_size
 
-    # To Create a new dataset using the AdversarialDataset class
-    adversarial_dataset = AdversarialDataset(adversarial_data)
+    # To Create a new dataset using the Transformed Dataset class
+    adversarial_dataset = Transformed_Dataset(adversarial_data)
     print(f"Distribution of data for each class: {num_of_items_in_class}")
     print(f"Number of adversarial in each class: {num_of_adver_in_class}")
 
@@ -235,27 +235,28 @@ if __name__ == '__main__':
         loss_fn = CrossEntropyLoss()
         EPOCHS = args.epochs
         prev_acc = 0
+        
         # Lists to store per-epoch accuracies for plotting
         train_acc_list = []
         val_acc_list = []
+        
         for epoch in range(EPOCHS):
             model.train()
             for index, (inputs, labels) in enumerate(train_loader):
                 optimizer.zero_grad()
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+                inputs, labels = inputs.to(device), labels.to(device)
                 preds = model(inputs.float())
                 loss = loss_fn(preds, labels.long())
                 loss.backward()
                 optimizer.step()
-            # Calculate training accuracy for this epoch
+            
+            # Training accuracy (on train set) for each epoch
             model.eval()
             train_correct = 0
             train_samples = 0
             with torch.no_grad():
                 for idx, (img, lbl) in enumerate(train_loader):
-                    img = img.to(device)
-                    lbl = lbl.to(device)
+                    img, lbl = img.to(device), lbl.to(device)
                     out = model(img.float())
                     pred = torch.argmax(out, dim=-1)
                     eq = (pred == lbl)
@@ -265,31 +266,31 @@ if __name__ == '__main__':
             train_acc_list.append(train_acc)
     
             # Validation accuracy (on test set)
-            correct_num = 0
-            sample_num = 0
+            test_correct = 0
+            test_samples = 0
             with torch.no_grad():
                 for index, (image, label) in enumerate(test_loader):
-                    image = image.to(device)
-                    label = label.to(device)
-                    preds = model(image.float())
-                    preds = torch.argmax(preds, dim=-1)
-                    current_correct_num = preds == label
-                    correct_num += int(torch.sum(current_correct_num.to('cpu')))
-                    sample_num += current_correct_num.shape[0]
+                    image, label = image.to(device), label.to(device)
+                    preds_test = model(image.float())
+                    preds_test = torch.argmax(preds_test, dim=-1)
+                    current_correct_num = preds_test == label
+                    test_correct += int(torch.sum(current_correct_num.to('cpu')))
+                    test_samples += current_correct_num.shape[0]
 
-            acc = correct_num / sample_num if sample_num > 0 else 0.0
-            val_acc_list.append(acc)
-            print('Epoch %3d - Train Acc: %1.4f  Val Acc: %1.4f' % (epoch+1, train_acc*100, acc*100), flush=True)
+            test_acc = test_correct / test_samples if test_samples > 0 else 0.0
+            val_acc_list.append(test_acc)
+            print('Epoch %3d - Train Acc: %1.4f  Val Acc: %1.4f' % (epoch+1, train_acc*100, test_acc*100), flush=True)
             
             if not os.path.isdir("weights"):
                 os.mkdir("weights")
-            torch.save(model.state_dict(), f"weights/mnist_{epoch+1}_{acc:.4f}.pkl")
+            torch.save(model.state_dict(), f"weights/mnist_{epoch+1}_{test_acc:.4f}.pkl")
             
-            if np.abs(acc - prev_acc) < 1e-4:
+            if np.abs(test_acc - prev_acc) < 1e-4:
                 break
-            prev_acc = acc
+            prev_acc = test_acc
         
         print("Training finished!")
+        
         # Plot train and validation accuracy vs epochs
         try:
             epochs = list(range(1, len(train_acc_list) + 1))
@@ -298,13 +299,13 @@ if __name__ == '__main__':
             plt.plot(epochs, [a * 100 for a in val_acc_list], label='Validation Accuracy')
             plt.xlabel('Epoch')
             plt.ylabel('Accuracy (%)')
-            plt.title('Train vs Validation Accuracy')
+            plt.title('Train versus Validation Accuracy')
             plt.legend()
             plt.grid(True)
             # Save figure
             if not os.path.isdir('figures'):
                 os.mkdir('figures')
-            plt.savefig('figures/training_accuracy.png', bbox_inches='tight')
+            plt.savefig('figures/train_vs_test.png', bbox_inches='tight')
             plt.show()
         except Exception as e:
             print(f"Could not plot accuracy curves: {e}")
@@ -459,7 +460,7 @@ if __name__ == '__main__':
         num_classes  = len(test_dataset.classes)
 
         c_init = 0.5
-        adversarial_dataset, initial_accuracy, final_accuracy, l2_norms, sr_net_before_total, sr_net_after_total = Sparsity_Attack_Generation(model, device, test_loader, num_classes, c_init, args)
+        adversarial_dataset, initial_accuracy, final_accuracy, l2_norms, sr_net_before_total, sr_net_after_total = sparsity_rate_increment(model, device, test_loader, num_classes, c_init, args)
         
         # Save the generated adversarial dataset to disk
         torch.save(adversarial_dataset, f"adversarial_data/adversarial_dataset_constrained_{args.constrained}.pt")
