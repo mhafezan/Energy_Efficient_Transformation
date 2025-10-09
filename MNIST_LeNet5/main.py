@@ -440,6 +440,6 @@ if __name__ == '__main__':
         print(f"Sparsity Increase (percent): {(sr_net_after_total - sr_net_before_total) / max(sr_net_before_total, sys.float_info.epsilon) * 100.0:.2f} %")
 
 # Train:            python3 main.py --phase train --dataset mnist_dataset
-# Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_transformation --dataset mnist_dataset --weights weights/mnist_13_0.9896.pkl
+# Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.2 --imax 100 --beta 22 --batch_size 10 --img_end_index 100 --constrained --store_transformation --dataset mnist_dataset --weights weights/mnist_13_0.9896.pkl
 # Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --transformed --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
 # Compile C++ file: "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
