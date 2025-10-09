@@ -176,7 +176,7 @@ if __name__ == '__main__':
         test_loader  = DataLoader(test_dataset_sub, batch_size=args.batch_size, shuffle=False)
     elif args.phase == 'test':
         if args.transformed:
-            test_dataset = torch.load('./transformed_data/transformed_dataset.pt', map_location=device)
+            test_dataset = torch.load('./mnist_transformed_dataset/transformed_dataset.pt', map_location=device)
             test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
         else:
             test_dataset  = mnist.MNIST(root=args.dataset, train=False, download=True, transform=transforms.ToTensor())
@@ -428,13 +428,16 @@ if __name__ == '__main__':
         transformed_dataset, initial_accuracy, final_accuracy, sr_net_before_total, sr_net_after_total = sparsity_rate_increment(model, device, test_loader, num_classes, c_init, args)
         
         # Save the generated transformed dataset to disk
-        torch.save(transformed_dataset, f"transformed_data/transformed_dataset.pt")
+        if not os.path.isdir("mnist_transformed_dataset"):
+                os.mkdir("mnist_transformed_dataset")
+        torch.save(transformed_dataset, f"mnist_transformed_dataset/transformed_dataset.pt")
 
         print(f"Test accuracy excluding energy attack: {initial_accuracy}")
         print(f"Test accuracy including energy attack: {final_accuracy}")
         print(f"Sparsity rate before energy attack: {sr_net_before_total}")
         print(f"Sparsity rate after energy attack: {sr_net_after_total}")
-        print(f"Sparsity reduction applying energy attack: {sr_net_before_total/(sys.float_info.epsilon if sr_net_after_total == 0 else sr_net_after_total)}")
+        print(f"Sparsity Increase (times): {sr_net_after_total/ max(sr_net_before_total, sys.float_info.epsilon):.2f} X")
+        print(f"Sparsity Increase (percent): {(sr_net_after_total - sr_net_before_total) / max(sr_net_before_total, sys.float_info.epsilon) * 100.0:.2f} %")
 
 # Train:            python3 main.py --phase train --dataset mnist_dataset
 # Transformation:   python3 main.py --phase sparsity-transform --eps 0.9 --eps_iter 0.9 --imax 200 --beta 20 --batch_size 5 --img_end_index 20 --constrained --store_transformation --dataset mnist_dataset --weights weights/mnist_13_0.9896.pkl
