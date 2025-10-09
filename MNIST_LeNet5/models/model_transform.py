@@ -26,7 +26,7 @@ class LeNet5(Module):
         
         L1_zeros, L1_size = sparsity_rate(x)
         L1_elements = x[0].numel()
-        L1_tanh = tanh(x, self.beta) # L1_tanh estimates the number of non-zero elements in each image of the batch
+        L1_tanh = tanh(x, self.beta) # Estimates the number of non-zero elements for each image in the batch
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.pool1(x)
@@ -58,18 +58,17 @@ class LeNet5(Module):
         x = self.fc3(x)
         x = self.relu5(x)
 
-        # We add all the tanh outputs which represent the number of non-zeros in each image
-        # Then we negate them to maximize the number of non-zeros in the backward optimization process
-        # And finally we divide them by number_of_neurons of network to represent them in terms of non-zero rate
+        # We add all tanh outputs which represent the number of non-zeros in each image of the batch
+        # Then, we divide them by number_of_network_neurons to estimate non-zero rate for each image
         tanh_total = (L1_tanh + L2_tanh + L3_tanh + L4_tanh + L5_tanh)
-        tanh_total = (-tanh_total)/(L1_elements + L2_elements + L3_elements + L4_elements + L5_elements)
+        tanh_total = (tanh_total)/(L1_elements + L2_elements + L3_elements + L4_elements + L5_elements)
         
         zeros_list = [L1_zeros, L2_zeros, L3_zeros, L4_zeros, L5_zeros]
         sizes_list = [L1_size, L2_size, L3_size, L4_size, L5_size]
 
         return x, zeros_list, sizes_list, tanh_total
 
-# To compute tanh with beta parameter
+# To estimate number of non-zero elements for each image in the batch using Tanh
 def tanh(input_tensor, beta):
     # To scale the tensor by BETA and apply tanh function to the scaled tensor
     output = torch.tanh(beta * input_tensor)
