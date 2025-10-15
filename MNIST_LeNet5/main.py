@@ -431,10 +431,10 @@ if __name__ == '__main__':
                 os.mkdir("mnist_transformed_dataset")
         torch.save(transformed_dataset, "mnist_transformed_dataset/transformed_dataset.pt")
 
-        print(f"Test accuracy excluding energy attack: {initial_accuracy}")
-        print(f"Test accuracy including energy attack: {final_accuracy}")
-        print(f"Sparsity rate before energy attack: {sr_net_before_total}")
-        print(f"Sparsity rate after energy attack: {sr_net_after_total}")
+        print(f"Test accuracy excluding Transformation: {initial_accuracy}")
+        print(f"Test accuracy including Transformation: {final_accuracy}")
+        print(f"Sparsity rate before Transformation: {sr_net_before_total}")
+        print(f"Sparsity rate after Transformation: {sr_net_after_total}")
         print(f"Sparsity Increase (times): {sr_net_after_total/ max(sr_net_before_total, sys.float_info.epsilon):.2f} X")
         print(f"Sparsity Increase (percent): {(sr_net_after_total - sr_net_before_total) / max(sr_net_before_total, sys.float_info.epsilon) * 100.0:.2f} %")
 
