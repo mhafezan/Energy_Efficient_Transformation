@@ -176,7 +176,7 @@ if __name__ == '__main__':
         test_loader  = DataLoader(test_dataset_sub, batch_size=args.batch_size, shuffle=False)
     elif args.phase == 'test':
         if args.transformed:
-            test_dataset = torch.load('./mnist_transformed_dataset/transformed_dataset.pt', map_location=device)
+            test_dataset = torch.load('./mnist_transformed_dataset/transformed_dataset.pt', map_location=device, weights_only=False)
             test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
         else:
             test_dataset  = mnist.MNIST(root=args.dataset, train=False, download=True, transform=transforms.ToTensor())
@@ -304,7 +304,6 @@ if __name__ == '__main__':
         # Set the model in evaluation mode
         model.eval()
     
-        # for index, (image, label, transformed) in enumerate(tqdm(test_loader, desc='Data Progress')):
         for index, (image, label) in enumerate(tqdm(test_loader, desc='Data Progress')):
             
             image, label = image.to(device), label.to(device)
@@ -349,18 +348,18 @@ if __name__ == '__main__':
         print('Sparsity rate of Network: %1.5f' % (SR_Net))
             
         # To print energy consumption and latency statistics
-        avg_inference_cycles = total_inference_cycles / sample_num
+        avg_cycles_dataset = total_inference_cycles / sample_num
         avg_dynamic_energy_dataset = total_dynamic_energy_dataset / sample_num
-        avg_static_energy_dataset = (total_static_energy_dataset / sample_num) * critical_path_delay
+        avg_static_energy_dataset = (total_static_energy_dataset * critical_path_delay) / sample_num
         total_energy = avg_dynamic_energy_dataset + avg_static_energy_dataset
         detail_static_energy_dataset = [x * critical_path_delay for x in detail_static_energy_dataset]
-        eng_total_detail_dataset = [a + b for a, b in zip(detail_dynamic_energy_dataset, detail_static_energy_dataset)]
-        avg_inference_latency = critical_path_delay * avg_inference_cycles
+        detail_total_energy_dataset = [a + b for a, b in zip(detail_dynamic_energy_dataset, detail_static_energy_dataset)]
+        avg_inference_latency = critical_path_delay * avg_cycles_dataset
     
         if args.power:
             print('\n########## Latency Statistics ##########\n')
             print('Average Inference Latency: %1.9f (Sec)' % (avg_inference_latency))
-            print('Average Inference Cycles : %1.2f' % (avg_inference_cycles))
+            print('Average Inference Cycles : %1.2f' % (avg_cycles_dataset))
             print('\n########## Energy Statistics ##########\n')
             print('Average Dynamic Energy of Dataset: %1.9f (J)' % (avg_dynamic_energy_dataset))
             print('Average Static Energy of Dataset: %1.9f (J)' % (avg_static_energy_dataset))
@@ -396,18 +395,18 @@ if __name__ == '__main__':
             print('Total      (J): %1.20f' % (total_eng_stat),'\n')
         
             print('########## Total Energy Breakdown ############\n')
-            print('Multiplier (J): %1.20f' % (eng_total_detail_dataset[0]))
-            print('AdderTree  (J): %1.20f' % (eng_total_detail_dataset[1]))
-            print('ReLu       (J): %1.20f' % (eng_total_detail_dataset[2]))
-            print('Encoder    (J): %1.20f' % (eng_total_detail_dataset[3]))
-            print('Dispatcher (J): %1.20f' % (eng_total_detail_dataset[4]))
-            print('NBin       (J): %1.20f' % (eng_total_detail_dataset[5]))
-            print('Offset     (J): %1.20f' % (eng_total_detail_dataset[6]))
-            print('SB         (J): %1.20f' % (eng_total_detail_dataset[7]))
-            print('NBout      (J): %1.20f' % (eng_total_detail_dataset[8]))
-            print('NM         (J): %1.20f' % (eng_total_detail_dataset[9]))
+            print('Multiplier (J): %1.20f' % (detail_total_energy_dataset[0]))
+            print('AdderTree  (J): %1.20f' % (detail_total_energy_dataset[1]))
+            print('ReLu       (J): %1.20f' % (detail_total_energy_dataset[2]))
+            print('Encoder    (J): %1.20f' % (detail_total_energy_dataset[3]))
+            print('Dispatcher (J): %1.20f' % (detail_total_energy_dataset[4]))
+            print('NBin       (J): %1.20f' % (detail_total_energy_dataset[5]))
+            print('Offset     (J): %1.20f' % (detail_total_energy_dataset[6]))
+            print('SB         (J): %1.20f' % (detail_total_energy_dataset[7]))
+            print('NBout      (J): %1.20f' % (detail_total_energy_dataset[8]))
+            print('NM         (J): %1.20f' % (detail_total_energy_dataset[9]))
         
-            total_eng = sum(eng_total_detail_dataset)
+            total_eng = sum(detail_total_energy_dataset)
             print('Total      (J): %1.20f' % (total_eng),'\n')
     
         sys.exit(0)
@@ -430,7 +429,7 @@ if __name__ == '__main__':
         # Save the generated transformed dataset to disk
         if not os.path.isdir("mnist_transformed_dataset"):
                 os.mkdir("mnist_transformed_dataset")
-        torch.save(transformed_dataset, f"mnist_transformed_dataset/transformed_dataset.pt")
+        torch.save(transformed_dataset, "mnist_transformed_dataset/transformed_dataset.pt")
 
         print(f"Test accuracy excluding energy attack: {initial_accuracy}")
         print(f"Test accuracy including energy attack: {final_accuracy}")
@@ -441,5 +440,5 @@ if __name__ == '__main__':
 
 # Train:            python3 main.py --phase train --dataset mnist_dataset
 # Transformation:   python3 main.py --phase sparsity-transform --eps 1 --eps_iter 0.2 --imax 500 --beta 22 --batch_size 10 --constrained --store_transformation --dataset mnist_dataset --weights weights/mnist_13_0.9896.pkl
-# Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --transformed --dataset mnist_dataset --weights weights/mnist_0.9882.pkl
-# Compile C++ file: "gcc -shared -o lib_power_functions.so -fPIC nested_loops.c"
+# Test Power Delay: python3 main.py --phase test --power --arch cnvlutin --batch_size 10 --transformed --dataset mnist_dataset --weights weights/mnist_13_0.9896.pkl
+# Compile C++ file: gcc -shared -o lib_power_functions.so -fPIC nested_loops.c
