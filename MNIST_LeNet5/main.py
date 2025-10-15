@@ -355,15 +355,20 @@ if __name__ == '__main__':
         detail_static_energy_dataset = [x * critical_path_delay for x in detail_static_energy_dataset]
         detail_total_energy_dataset = [a + b for a, b in zip(detail_dynamic_energy_dataset, detail_static_energy_dataset)]
         avg_inference_latency = critical_path_delay * avg_cycles_dataset
+        total_eng_dnmc = sum(detail_dynamic_energy_dataset)
+        total_eng_stat = sum(detail_static_energy_dataset)
+        total_eng = sum(detail_total_energy_dataset)
     
         if args.power:
             print('\n########## Latency Statistics ##########\n')
             print('Average Inference Latency: %1.9f (Sec)' % (avg_inference_latency))
             print('Average Inference Cycles : %1.2f' % (avg_cycles_dataset))
+
             print('\n########## Energy Statistics ##########\n')
             print('Average Dynamic Energy of Dataset: %1.9f (J)' % (avg_dynamic_energy_dataset))
             print('Average Static Energy of Dataset: %1.9f (J)' % (avg_static_energy_dataset))
             print('Total Energy of Dataset: %1.9f (J)' % (total_energy),'\n')
+
             print('########## Dynamic Energy Breakdown ##########\n')
             print('Multiplier (J): %1.20f' % (detail_dynamic_energy_dataset[0]))
             print('AdderTree  (J): %1.20f' % (detail_dynamic_energy_dataset[1]))
@@ -375,8 +380,6 @@ if __name__ == '__main__':
             print('SB         (J): %1.20f' % (detail_dynamic_energy_dataset[7]))
             print('NBout      (J): %1.20f' % (detail_dynamic_energy_dataset[8]))
             print('NM         (J): %1.20f' % (detail_dynamic_energy_dataset[9]))
-        
-            total_eng_dnmc = sum(detail_dynamic_energy_dataset)
             print('Total      (J): %1.20f' % (total_eng_dnmc),'\n')
         
             print('########## Static Energy Breakdown ###########\n')
@@ -390,8 +393,6 @@ if __name__ == '__main__':
             print('SB         (J): %1.20f' % (detail_static_energy_dataset[7]))
             print('NBout      (J): %1.20f' % (detail_static_energy_dataset[8]))
             print('NM         (J): %1.20f' % (detail_static_energy_dataset[9]))
-        
-            total_eng_stat = sum(detail_static_energy_dataset)
             print('Total      (J): %1.20f' % (total_eng_stat),'\n')
         
             print('########## Total Energy Breakdown ############\n')
@@ -405,8 +406,6 @@ if __name__ == '__main__':
             print('SB         (J): %1.20f' % (detail_total_energy_dataset[7]))
             print('NBout      (J): %1.20f' % (detail_total_energy_dataset[8]))
             print('NM         (J): %1.20f' % (detail_total_energy_dataset[9]))
-        
-            total_eng = sum(detail_total_energy_dataset)
             print('Total      (J): %1.20f' % (total_eng),'\n')
     
         sys.exit(0)
